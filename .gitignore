@@ -48,3 +48,6 @@ sfx_files
 
 # Secrets
 .env
+
+# Error messages occured during development
+/errors
