@@ -14,9 +14,13 @@ const quizPlayersSchema = new mongoose.Schema({
     name: {
         type: String,
         required: false
+    },
+    totalPoints: {
+        type: Number,
+        required: true,
+        default: 0
     }
 });
 
 // export so we can use it
-// AutoReact is the name of the collection in MongoDB
 module.exports = mongoose.model('Players', quizPlayersSchema);
