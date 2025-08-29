@@ -29,8 +29,6 @@ module.exports = {
     console.log(`${user.tag} removed a reaction: ${reaction.emoji.name}`);
 
     if (user.bot) return;
-    console.log(`Not Bot`);
-
 
     if (reaction.partial) {
       try {
@@ -41,30 +39,21 @@ module.exports = {
       }
     }
 
-    console.log(`Not Partial`);
-
     const guild = reaction.message.guild;
     if (!guild) return;
-
-    console.log(`In guild`);
 
     const member = await guild.members.fetch(user.id);
     if(!member.roles.cache.some(role => role.name === QUIZ_HOST_ROLE)) return;
 
-    console.log(`Is host`);
-
     // Only handle number emojis
     if (!numberEmojis.includes(reaction.emoji.name)) return;
-
-    console.log(`Is emoji`);
 
     const emoji = reaction.emoji.name;
     const toTake = parseInt(numberMap[emoji], 10);
 
     try{
         const playerDoc = await quizCurrentSchema.findOne({userId: reaction.message.author});
-        console.log(playerDoc);
-        //if (!playerDoc) return;
+        if (!playerDoc) return;
 
         playerDoc.points -= toTake;
         await playerDoc.save();

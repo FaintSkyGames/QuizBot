@@ -51,6 +51,7 @@ module.exports = {
 
         try{
             const playerDoc = await quizCurrentSchema.findOne({userId: reaction.message.author});
+            if(!playerDoc) return;
 
             playerDoc.points += toGive;
             await playerDoc.save();
