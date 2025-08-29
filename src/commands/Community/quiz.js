@@ -7,7 +7,6 @@ const player = require('./player');
 
 const QUIZ_HOST_ROLE = "quizhost"; // name of the role required
 
-
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('quiz')
@@ -96,8 +95,6 @@ module.exports = {
 
         const guild = interaction.guild;
 
-        const roleName = "quizhost";
-
         //const quizPlayersDB = mongoose.models.players  || mongoose.model('players', quizPlayersSchema);
         //const PlayersDB = mongoose.models.PlayersDB || mongoose.model('PlayersDB', quizPlayersSchema, 'players');
 
@@ -107,8 +104,8 @@ module.exports = {
                 await interaction.deferReply();
 
                 // Find the role by name
-                const hostRole = guild.roles.cache.find(r => r.name === roleName);
-                if (!hostRole) return interaction.editReply(`The role "${roleName}" is required.`);                
+                const hostRole = guild.roles.cache.find(r => r.name === QUIZ_HOST_ROLE);
+                if (!hostRole) return interaction.editReply(`The role "${QUIZ_HOST_ROLE}" is required.`);                
 
                 await guild.members.fetch();
                 const host = guild.members.cache.filter(member => member.roles.cache.has(hostRole.id));
@@ -116,7 +113,7 @@ module.exports = {
                 // if host present then quiz active
                 if(host.size > 0){
                     const hostUsernames = host.map(member => member.user.tag).join(", ");
-                    console.log(`Role "${roleName}" exists for: ${hostUsernames}`);
+                    console.log(`Role "${QUIZ_HOST_ROLE}" exists for: ${hostUsernames}`);
                     
                     const embed = new EmbedBuilder()
                         .setColor('Random')
@@ -131,13 +128,13 @@ module.exports = {
                     const hostId = interaction.options.getUser('host');
 
                     // Find role in guild
-                    const hostRole = guild.roles.cache.find(r => r.name === roleName);
-                    if (!hostRole) return interaction.editReply(`The role "${roleName}" is required.`);
+                    const hostRole = guild.roles.cache.find(r => r.name === QUIZ_HOST_ROLE);
+                    if (!hostRole) return interaction.editReply(`The role "${QUIZ_HOST_ROLE}" is required.`);
 
                     // Assign role
                     const member = await guild.members.fetch(hostId);
                     member.roles.add(hostRole)
-                        .then(() => console.log(`${member.user.tag} was given the role "${roleName}"!`))
+                        .then(() => console.log(`${member.user.tag} was given the role "${QUIZ_HOST_ROLE}"!`))
                         .catch(err => console.error(`Failed to assign role: ${err}`));
 
                     // Assign cohost
@@ -170,41 +167,42 @@ module.exports = {
             }
         } else if (subcommand === 'end') {
 
-            await interaction.deferReply();
+            const member = interaction.member;
+            if (!member.roles.cache.some(role => role.name === QUIZ_HOST_ROLE)) {
+                return interaction.reply({
+                    content: "❌ You need the **quizhost** role to run this command!",
+                    ephemeral: true
+                });
+            }
 
+
+            await interaction.deferReply();
             
-             try {
+            try {
 
                 const hostId = interaction.options.getUser('host');
 
-                
+                const scores = await quizCurrentSchema.find().sort({ points: -1 });
+                const players = await quizPlayersSchema.find();
 
-
-                /// only if host
-
-
-
+                // Build nickname map
+                const nicknameMap = new Map(players.map(p => [p.userId, p.name]));
 
                 // post results
-                const players = await quizCurrentSchema.find().sort({points: -1});
+                //await interaction.deferReply();
 
-                if(players === 0){
-                    return interaction.editReply("No players found in the database.");
-                }
-
-                const leaderboard = players
-                    .map((player, index) => `${index +1}. ***${player.userId}*** - ${player.points} points`)
-                    .join("\n");
+                // Build leaderboard string
+                const scoreboard = buildScoreboard(scores, nicknameMap, scores.length);
 
                 await interaction.editReply({
                     embeds: [
                         {
                             title: "🏆 Quiz Results",
-                            description: leaderboard,
+                            description: scoreboard,
                             color: 0xffd700 // gold
                         }
                     ]
-                });               
+                });           
                 
                 // add to overview
                 const today = new Date();
@@ -212,26 +210,26 @@ module.exports = {
                     (today.getMonth() + 1).toString().padStart(2, '0')
                 }/${today.getFullYear()}`;
 
-                console.log(hostId.id);
+                const top5 = scores.slice(0,5);
 
                 try {
                     await quizOverviewSchema.create({
                         hostId: `<@${hostId.id}>`,
                         date: formattedDate,
-                        first: players[0]?.userId ?? "a",
-                        second: players[1]?.userId ?? "a",
-                        third: players[2]?.userId ?? "a",
-                        fourth: players[3]?.userId ?? "a",
-                        fifth: players[4]?.userId ?? "a"
+                        first: players[0]?.userId ?? "0000",
+                        second: players[1]?.userId ?? "0000",
+                        third: players[2]?.userId ?? "0000",
+                        fourth: players[3]?.userId ?? "0000",
+                        fifth: players[4]?.userId ?? "0000"
                     });
                 } catch (err) {
                     console.error("Failed to create quiz overview:", err);
                 }
 
-
+                // give players points
+                await awardTopPoints();
 
                 // clear current quiz
-
                 try {
                     await quizCurrentSchema.deleteMany({});
                     console.log("All quizCurrentSchema documents have been cleared!");
@@ -242,15 +240,15 @@ module.exports = {
 
                 // clear host & cohost roles
 
-                const hostRole = guild.roles.cache.find(r => r.name === roleName);
-                if (!hostRole) return console.log(`Role "${roleName}" not found`);
+                const hostRole = guild.roles.cache.find(r => r.name === QUIZ_HOST_ROLE);
+                if (!hostRole) return console.log(`Role "${QUIZ_HOST_ROLE}" not found`);
 
                 const members = await guild.members.fetch();
                 const membersWithRole = members.filter(member => member.roles.cache.has(hostRole.id));
 
                 for (const member of membersWithRole.values()) {
                     await member.roles.remove(hostRole)
-                        .then(() => console.log(`${member.user.tag} was removed from the role "${roleName}"`))
+                        .then(() => console.log(`${member.user.tag} was removed from the role "${QUIZ_HOST_ROLE}"`))
                         .catch(err => console.error(`Failed to remove role from ${member.user.tag}: ${err}`));
                 }               
 
@@ -269,6 +267,16 @@ module.exports = {
             // await interaction.reply({embeds: [embed]});
 
         } else if (subcommand === 'give') {
+
+            const member = interaction.member;
+            if (!member.roles.cache.some(role => role.name === QUIZ_HOST_ROLE)) {
+                return interaction.reply({
+                    content: "❌ You need the **quizhost** role to run this command!",
+                    ephemeral: true
+                });
+            }
+
+
             const playerId = interaction.options.getUser('player');
             const toGive = interaction.options.getNumber('points');
 
@@ -292,6 +300,15 @@ module.exports = {
             }
             
         } else if (subcommand === 'take') {
+
+            const member = interaction.member;
+            if (!member.roles.cache.some(role => role.name === QUIZ_HOST_ROLE)) {
+                return interaction.reply({
+                    content: "❌ You need the **quizhost** role to run this command!",
+                    ephemeral: true
+                });
+            }
+
             const playerId = interaction.options.getUser('player');
             const toTake = interaction.options.getNumber('points');
 
@@ -342,60 +359,33 @@ module.exports = {
 
             await interaction.deferReply();
 
-            try {
-                const players = await quizPlayersSchema.find();
-                const scores = await quizCurrentSchema.find().sort({points: -1});
+            const scores = await quizCurrentSchema.find().sort({ points: -1 });
+            const players = await quizPlayersSchema.find();
 
-                if(scores === 0){
-                    return interaction.editReply("No players found in the database.");
-                }
+            // Build nickname map
+            const nicknameMap = new Map(players.map(p => [p.userId, p.name]));
 
-                // Build nickname lookup
-                const nicknameMap = new Map(players.map(p => [p.userId, p.name]) );
+            // Build leaderboard string
+            const scoreboard = buildScoreboard(scores, nicknameMap, scores.length);
 
-                let currentRank = 0;
-                let lastScore = null;
-                const medals = ["🥇", "🥈", "🥉"]; // top 3 emojis
-                
-                // Build scoreboard
-                const scoreboard = scores
-                    .map((player, index) => {
-                        const displayName = nicknameMap.get(player.userId) || player.username
-
-                        if (player.points !== lastScore){
-                            currentRank = index + 1;
-                            lastScore = player.points;
-                        }
-
-                        const rank = medals[currentRank - 1] || `${currentRank}.`;
-                        return `${rank} ***${displayName}*** - ${player.points} points`;
-                    })
-                    .join("\n");
-
-                await interaction.editReply({
-                    embeds: [
-                        {
-                            title: "🏆 Current Scores",
-                            description: scoreboard,
-                            color: 0xffd700 // gold
-                        }
-                    ]
-                });          
-
-            } catch (error) {
-                interaction.editReply(error)
-                
-            }
+            await interaction.editReply({
+                embeds: [
+                    {
+                        title: "🏆 Current Scores",
+                        description: scoreboard,
+                        color: 0xffd700 // gold
+                    }
+                ]
+            }); 
         
         } else if (subcommand === 'leaderboard'){
 
             await interaction.deferReply();
 
             try {
-                const players = await quizPlayersSchema.find();
-                const scores = await quizOverviewSchema.find().sort({totalPoints: -1});
+                const players = await quizPlayersSchema.find().sort({totalPoints: -1});
 
-                if(scores === 0){
+                if(players === 0){
                     return interaction.editReply("No players found in the database.");
                 }
 
@@ -407,11 +397,11 @@ module.exports = {
                 const medals = ["🥇", "🥈", "🥉"]; // top 3 emojis
                 
                 // Build scoreboard
-                const leaderboard = scores
+                const leaderboard = players
                     .map((player, index) => {
                         const displayName = nicknameMap.get(player.userId) || player.username
 
-                        if (player.points !== lastScore){
+                        if (player.totalPoints !== lastScore){
                             currentRank = index + 1;
                             lastScore = player.totalPoints;
                         }
@@ -441,3 +431,88 @@ module.exports = {
 
     }
 };
+
+
+/**
+ * Build a leaderboard string from scores + optional nicknames.
+ * 
+ * @param {Array} scores - Array of player objects, sorted by totalPoints (descending).
+ *   Each player should have { userId, username, totalPoints }.
+ * @param {Map} nicknameMap - Map of userId → nickname (optional).
+ * @param {number} limit - Max number of players to show (default 10).
+ * @returns {string} leaderboard string
+ */
+function buildScoreboard(scores, nicknameMap = new Map(), limit = 10) {
+  const medals = ["🥇", "🥈", "🥉"];
+  let currentRank = 0;
+  let lastScore = null;
+  let skips = 0;
+
+  return scores.slice(0, limit).map((player, index) => {
+    const displayName = nicknameMap.get(player.userId) || player.username;
+
+    // Competition ranking logic (1224 style)
+    if(player.points === 0 && lastScore !== 0){
+        currentRank = currentRank + 1;
+        lastScore = player.points;
+    } else if (player.points === 0 && lastScore === 0) {
+      currentRank = currentRank;
+        lastScore = player.points;
+    } else if (player.points !== lastScore) {
+      currentRank = index + 1;
+      lastScore = player.points;
+    }
+
+    const rankDisplay = medals[currentRank - 1] || `${currentRank}.`;
+    return `${rankDisplay} ***${displayName}*** - ${player.points} points`;
+  }).join("\n");
+}
+
+
+
+
+async function awardTopPoints() {
+  try {
+    const players = await quizPlayersSchema.find();
+    // 1️⃣ Fetch all players sorted by current points descending
+    const scores = await quizCurrentSchema.find().sort({ points: -1 });
+
+    const rankPoints = [5, 4, 3, 2, 1]; // top 5 points
+    let currentRank = 0;
+    let lastScore = null;
+
+    for (let i = 0; i < scores.length; i++) {
+      const player = scores[i];
+
+      // Determine if this player gets a new rank or shares last one
+      if (player.points === 0 && lastScore !== 0){
+        currentRank = i + 1;
+        lastScore = player.points;
+      } else if (player.points === 0 && lastScore === 0){
+        currentRank = currentRank;
+        lastScore = player.points;
+      } else if (player.points !== lastScore) {
+        currentRank = i + 1;
+        lastScore = player.points;
+      }
+
+      // Only award points to top 5 ranks
+      if (currentRank <= 5) {
+        const pointsToGive = rankPoints[currentRank - 1];
+        const playerDoc = await quizPlayersSchema.findOne({userId: player.userId});
+        if(playerDoc){
+            playerDoc.totalPoints += pointsToGive;
+            await playerDoc.save();
+            console.log(`${playerDoc.username} awarded ${pointsToGive} points in players collection`);
+        } else{
+            console.warn(`Player with userId ${player.userId} not found in players collection`);
+        }
+      }
+    }
+
+    console.log('Top 5 points awarded successfully!');
+  } catch (err) {
+    console.error('Error awarding top points:', err);
+  }
+}
+
