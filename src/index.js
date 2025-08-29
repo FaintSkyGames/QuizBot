@@ -1,5 +1,20 @@
 const { Client, GatewayIntentBits, Partials } = require(`discord.js`);
-const client = new Client({ intents: ['GuildMessages', 'MessageContent', 'DirectMessages', 'GuildMembers', 'Guilds'], }); //Guilds, GuildMembers : REQUIRED 
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions, // ✅ Added this line
+        GatewayIntentBits.DirectMessages
+    ],
+    partials: [Partials.Message, Partials.Channel, Partials.Reaction], // ✅ Added partials
+});
+
+//const client = new Client({ intents: ['GuildMessages', 'MessageContent', 'DirectMessages', 'GuildMembers', 'Guilds'], }); //Guilds, GuildMembers : REQUIRED 
+
+
 const chalk = require('chalk');
 const config = require('../config.json');
 const fs = require('fs');
@@ -13,6 +28,7 @@ const adminFolderPath = path.join(__dirname, '../admin');
 const dashboardFilePath = path.join(adminFolderPath, 'dashboard.js');
 
 const eventsPath = './events';
+
 
 const errorsDir = path.join(__dirname, '../../../errors');
 

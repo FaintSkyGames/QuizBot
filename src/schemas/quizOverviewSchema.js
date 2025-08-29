@@ -32,8 +32,9 @@ const quizOverviewSchema = new mongoose.Schema({
         type: String,
         required: false
     }
-});
+},  { collection: 'quizesOverview'});
 
 // export so we can use it
 // AutoReact is the name of the collection in MongoDB
-module.exports = mongoose.model('Overview', quizOverviewSchema);
+// ✅ Prevent OverwriteModelError
+module.exports = mongoose.models.QuizesOverview || mongoose.model('QuizesOverview', quizOverviewSchema);
