@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 // all the things to save
 
-const quizResultsSchema = new mongoose.Schema({
+const quizCurrentSchema = new mongoose.Schema({
     userId: {
         type: String,
         required: true,
@@ -12,8 +12,10 @@ const quizResultsSchema = new mongoose.Schema({
         required: true,
         default: 0
     }
-});
+}, { collection: 'currentQuiz'} );
 
 // export so we can use it
 // AutoReact is the name of the collection in MongoDB
-module.exports = mongoose.model('Results', quizResultsSchema);
+
+// ✅ Prevent OverwriteModelError
+module.exports = mongoose.models.CurrentQuiz || mongoose.model('CurrentQuiz', quizCurrentSchema);

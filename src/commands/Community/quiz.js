@@ -5,6 +5,8 @@ const quizCurrentSchema = require('../../schemas/quizCurrentSchema');
 const quizOverviewSchema = require('../../schemas/quizOverviewSchema');
 const player = require('./player');
 
+const QUIZ_HOST_ROLE = "quizhost"; // name of the role required
+
 
 module.exports = {
     data: new SlashCommandBuilder()
