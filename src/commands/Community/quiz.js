@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, ChannelType } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const mongoose = require('mongoose');
 const quizPlayersSchema = require('../../schemas/quizPlayersSchema');
 const quizCurrentSchema = require('../../schemas/quizCurrentSchema');
@@ -70,12 +70,12 @@ module.exports = {
         .addSubcommand(subcommand =>
             subcommand
                 .setName('wipe')
-                .setDescription('Wipe the leaderboard')
+                .setDescription('Wipe the whole leaderboard. Asks for confirmation')
         )
         .addSubcommand(subcommand =>
             subcommand
                 .setName('clear')
-                .setDescription('Clear points for today')
+                .setDescription('Clear points for the active quiz')
         )
         .addSubcommand(subcommand =>
             subcommand
@@ -332,8 +332,75 @@ module.exports = {
             }
             
         } else if (subcommand === 'wipe') {
+
+            await interaction.deferReply();
+
+            const hostRole = guild.roles.cache.find(r => r.name === QUIZ_HOST_ROLE);
+
+            await guild.members.fetch();
+            const host = guild.members.cache.filter(member => member.roles.cache.has(hostRole.id));
+
+            // if host present then quiz active
+            if(host.size > 0){
+                const hostUsernames = host.map(member => member.user.tag).join(", ");
+                console.log(`Role "${QUIZ_HOST_ROLE}" exists for: ${hostUsernames}`);
+                    
+                const embed = new EmbedBuilder()
+                    .setColor('Random')
+                    .setTitle('Wipe Failed')
+                    .setDescription(`Error: A quiz can not be running. There is an existing quiz hosted by ${hostUsernames}`)
+                    .setTimestamp()
+
+                await interaction.editReply({embeds: [embed]});
+            }
+            
+            // Send confirmation buttons
+            const row = new ActionRowBuilder()
+                .addComponents(
+            new ButtonBuilder()
+                .setCustomId('confirm_wipe')
+                .setLabel('Yes, wipe it!')
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId('cancel_wipe')
+                .setLabel('Cancel')
+                .setStyle(ButtonStyle.Secondary)
+            );
+
+            await interaction.editReply({ content: 'Are you sure you want to wipe the database? This will delete all players and all the scores for every quiz so far.', components: [row], ephemeral: true });
+
+            // Create collector to wait for button click
+            const filter = i => i.user.id === interaction.user.id; // only allow the command user
+            const collector = interaction.channel.createMessageComponentCollector({ filter, time: 60000, max: 1 });
+
+            collector.on('collect', async i => {
+                if (i.customId === 'confirm_wipe') {
+                    // Wipe leaderboard
+                    await quizPlayersSchema.deleteMany({});
+                    await quizOverviewSchema.deleteMany({});
+                    await i.update({ content: '✅ Database wiped!', components: [] });
+                } else {
+                    await i.update({ content: '❌ Wipe canceled.', components: [] });
+                }
+            });
+
+            collector.on('end', async collected => {
+                if (collected.size === 0) {
+                    // No button clicked within 60 seconds
+                    await interaction.editReply({ content: '⌛ No response, wipe canceled.', components: [] });
+                }
+            });
             
         } else if (subcommand === 'clear') {  // Clear points for today
+            
+            const member = interaction.member;
+            if (!member.roles.cache.some(role => role.name === QUIZ_HOST_ROLE)) {
+                return interaction.reply({
+                    content: "❌ You need the **quizhost** role to run this command!",
+                    ephemeral: true
+                });
+            }
+            
             try {
                 const allPlayers = await quizCurrentSchema.find();
             
