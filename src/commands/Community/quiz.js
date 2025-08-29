@@ -22,12 +22,6 @@ module.exports = {
                         .setDescription('Who is hosting the quiz today?')
                         .setRequired(true)
                 )
-                .addUserOption(option =>
-                    option
-                        .setName('cohost')
-                        .setDescription('Would you like a second in command?')
-                        .setRequired(false)
-                )
         )
         .addSubcommand(subcommand =>
             subcommand
@@ -86,8 +80,13 @@ module.exports = {
         )
         .addSubcommand(subcommand =>
             subcommand
+                .setName('scoreboard')
+                .setDescription('Show the current scores for the active quiz')
+        )
+        .addSubcommand(subcommand =>
+            subcommand
                 .setName('leaderboard')
-                .setDescription('show leaderboard')
+                .setDescription('Show the leaderboard for all the quizes')
         ),             
     async execute(interaction) {
         // Command execution logic goes here
@@ -338,25 +337,94 @@ module.exports = {
                 interaction.reply("error");
             }
             
-        } else if (subcommand === 'leaderboard'){
+        
+        } else if (subcommand === 'scoreboard'){
 
             await interaction.deferReply();
 
             try {
-                const players = await quizPlayersSchema.find().sort({totalPoints: -1});
+                const players = await quizPlayersSchema.find();
+                const scores = await quizCurrentSchema.find().sort({points: -1});
 
-                if(players === 0){
+                if(scores === 0){
                     return interaction.editReply("No players found in the database.");
                 }
 
-                const leaderboard = players
-                    .map((player, index) => `${index +1}. ***${player.username}*** - ${player.totalPoints} points`)
+                // Build nickname lookup
+                const nicknameMap = new Map(players.map(p => [p.userId, p.name]) );
+
+                let currentRank = 0;
+                let lastScore = null;
+                const medals = ["🥇", "🥈", "🥉"]; // top 3 emojis
+                
+                // Build scoreboard
+                const scoreboard = scores
+                    .map((player, index) => {
+                        const displayName = nicknameMap.get(player.userId) || player.username
+
+                        if (player.points !== lastScore){
+                            currentRank = index + 1;
+                            lastScore = player.points;
+                        }
+
+                        const rank = medals[currentRank - 1] || `${currentRank}.`;
+                        return `${rank} ***${displayName}*** - ${player.points} points`;
+                    })
                     .join("\n");
 
                 await interaction.editReply({
                     embeds: [
                         {
-                            title: "🏆 Quiz Leaderboard",
+                            title: "🏆 Current Scores",
+                            description: scoreboard,
+                            color: 0xffd700 // gold
+                        }
+                    ]
+                });          
+
+            } catch (error) {
+                interaction.editReply(error)
+                
+            }
+        
+        } else if (subcommand === 'leaderboard'){
+
+            await interaction.deferReply();
+
+            try {
+                const players = await quizPlayersSchema.find();
+                const scores = await quizOverviewSchema.find().sort({totalPoints: -1});
+
+                if(scores === 0){
+                    return interaction.editReply("No players found in the database.");
+                }
+
+                // Build nickname lookup
+                const nicknameMap = new Map(players.map(p => [p.userId, p.name]) );
+
+                let currentRank = 0;
+                let lastScore = null;
+                const medals = ["🥇", "🥈", "🥉"]; // top 3 emojis
+                
+                // Build scoreboard
+                const leaderboard = scores
+                    .map((player, index) => {
+                        const displayName = nicknameMap.get(player.userId) || player.username
+
+                        if (player.points !== lastScore){
+                            currentRank = index + 1;
+                            lastScore = player.totalPoints;
+                        }
+
+                        const rank = medals[currentRank - 1] || `${currentRank}.`;
+                        return `${rank} ***${displayName}*** - ${player.totalPoints} points`;
+                    })
+                    .join("\n");
+
+                await interaction.editReply({
+                    embeds: [
+                        {
+                            title: "🏆 Leaderboard",
                             description: leaderboard,
                             color: 0xffd700 // gold
                         }
