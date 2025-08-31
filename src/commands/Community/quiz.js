@@ -116,6 +116,14 @@ module.exports = {
             .setRequired(false)
             .addChannelTypes(ChannelType.GuildVoice)
         )
+        .addIntegerOption((option) =>
+          option
+            .setName("forceanswers")
+            .setDescription(
+              "Force players to submit answers within selected time. Give answer in seconds"
+            )
+            .setRequired(false)
+        )
     )
     .addSubcommand((subcommand) =>
       subcommand
@@ -536,35 +544,52 @@ module.exports = {
       }
 
       const timerMs = interaction.options.getInteger("time");
-      let remainingMs = timerMs;
+      let remainingTimerMs = timerMs;
+      const answerS = interaction.options.getInteger("forceanswers");
+      let answerMs = answerS * 1000;
 
       // Initial embed
-      const embed = new EmbedBuilder()
+      const timerEmbed = new EmbedBuilder()
         .setTitle("⏱ Timer")
         .setDescription(
-          `Time remaining: **${Math.ceil(remainingMs / 1000)} seconds**`
+          `Time remaining: **${Math.ceil(remainingTimerMs / 1000)} seconds**`
         )
         .setColor("Blue");
 
       const message = await interaction.reply({
-        embeds: [embed],
+        embeds: [timerEmbed],
         withResponse: true,
       });
 
-      const interval = setInterval(async () => {
-        remainingMs -= 1000;
+      const timerInterval = setInterval(async () => {
+        remainingTimerMs -= 1000;
 
-        if (remainingMs <= 0) {
-          clearInterval(interval);
-          await interaction.editReply({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle("⏱ Timer Complete!")
-                .setDescription(`Time is up! ${pingRole} ⚡`)
-                .setColor("Green"),
-            ],
-          });
+        if (remainingTimerMs <= 0) {
+          clearInterval(timerInterval);
 
+          if (answerMs) {
+            await interaction.editReply({
+              embeds: [
+                new EmbedBuilder()
+                  .setTitle("⏱ Timer Complete!")
+                  .setDescription(
+                    `Time is up!⚡ You have ${
+                      answerMs / 1000
+                    } seconds to post your answers.`
+                  )
+                  .setColor("Green"),
+              ],
+            });
+          } else {
+            await interaction.editReply({
+              embeds: [
+                new EmbedBuilder()
+                  .setTitle("⏱ Timer Complete!")
+                  .setDescription(`Time is up!⚡`)
+                  .setColor("Green"),
+              ],
+            });
+          }
           await interaction.followUp({
             content: `${pingRole} your time is up!`,
             AllowedMentions: { roles: [pingRole.id] },
@@ -573,8 +598,6 @@ module.exports = {
           // Return players
           const returnChannel = interaction.options.getChannel("return");
 
-          console.log(returnChannel);
-
           if (returnChannel && returnChannel.type === ChannelType.GuildVoice) {
             // Loop through all voice channels in the guild
             interaction.guild.channels.cache
@@ -582,7 +605,6 @@ module.exports = {
               .forEach((voiceChannel) => {
                 console.log(`Going through ${voiceChannel.name}`);
                 voiceChannel.members.forEach(async (member) => {
-                  console.log(`moveing ${member.user.tag}`);
                   try {
                     // Move each member to the specified return channel
                     if (member.voice.channelId !== returnChannel.id) {
@@ -596,13 +618,30 @@ module.exports = {
           } else {
             console.error(`ERROR with return channel`);
           }
+
+          if (answerMs) {
+            let remainingAnswerMs = answerMs;
+
+            const answerInterval = setInterval(async () => {
+              remainingAnswerMs -= 1000;
+
+              if (remainingAnswerMs <= 0) {
+                clearInterval(answerInterval);
+                await interaction.followUp({
+                  content: `STOP! All answers are submitted.`,
+                });
+              }
+            }, 1000);
+          }
         } else {
           await interaction.editReply({
             embeds: [
               new EmbedBuilder()
                 .setTitle("⏱ Timer")
                 .setDescription(
-                  `Time remaining: **${Math.ceil(remainingMs / 1000)} seconds**`
+                  `Time remaining: **${Math.ceil(
+                    remainingTimerMs / 1000
+                  )} seconds**`
                 )
                 .setColor("Blue"),
             ],
