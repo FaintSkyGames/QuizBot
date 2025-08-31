@@ -23,4 +23,4 @@ const quizPlayersSchema = new mongoose.Schema({
 });
 
 // export so we can use it
-module.exports = mongoose.model('Players', quizPlayersSchema);
+module.exports = mongoose.models.Players || mongoose.model('Players', quizPlayersSchema);
