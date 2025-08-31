@@ -119,6 +119,31 @@ module.exports = {
     )
     .addSubcommand((subcommand) =>
       subcommand
+        .setName("teams")
+        .setDescription(
+          "Generate teams either by team size or total number of teams"
+        )
+        .addIntegerOption((option) =>
+          option
+            .setName("total")
+            .setDescription("Number of teams to create")
+            .setRequired(false)
+        )
+        .addIntegerOption((option) =>
+          option
+            .setName("size")
+            .setDescription("Number of members per team")
+            .setRequired(false)
+        )
+        .addBooleanOption((option) =>
+          option
+            .setName("end")
+            .setDescription("Remove all the team channels")
+            .setRequired(false)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
         .setName("scoreboard")
         .setDescription("Show the current scores for the active quiz")
     )
@@ -555,10 +580,9 @@ module.exports = {
             interaction.guild.channels.cache
               .filter((channel) => channel.type === ChannelType.GuildVoice)
               .forEach((voiceChannel) => {
-
                 console.log(`Going through ${voiceChannel.name}`);
                 voiceChannel.members.forEach(async (member) => {
-                    console.log(`moveing ${member.user.tag}`);
+                  console.log(`moveing ${member.user.tag}`);
                   try {
                     // Move each member to the specified return channel
                     if (member.voice.channelId !== returnChannel.id) {
@@ -585,6 +609,122 @@ module.exports = {
           });
         }
       }, 1000);
+    } else if (subcommand === "teams") {
+      const numTeams = interaction.options.getInteger("total");
+      const teamSize = interaction.options.getInteger("size");
+      const end = interaction.options.getBoolean("end");
+
+      if (!numTeams && !teamSize && !end) {
+        return interaction.reply({
+          content:
+            "❌ You must specify either number of teams or team size if you want to make a team.",
+          ephemeral: true,
+        });
+      }
+
+      if (end) {
+        const member = interaction.member;
+
+        const currentChannel = member.voice.channel;
+        // Get the category of that voice channel
+        const category = interaction.member.voice.channel.parent;
+
+        if (!category) {
+          return interaction.reply({
+            content: "❌ Your voice channel is not in a category.",
+            ephemeral: true,
+          });
+        }
+
+        // Get all voice channels in this category
+        const voiceChannels = interaction.guild.channels.cache.filter(
+          (ch) =>
+            ch.parentId === category.id &&
+            ch.type === ChannelType.GuildVoice &&
+            ch.id != currentChannel.id
+        );
+
+        voiceChannels.forEach(async (channel) => {
+          try {
+            await channel.delete();
+          } catch (err) {
+            console.error(`failed to delete ${channel.name}`, err);
+          }
+        });
+
+        return interaction.reply({
+          content: "✅  Complete. Removed extra channels.",
+          ephemeral: true,
+        });
+      } else {
+        const quizRole = interaction.guild.roles.cache.find(
+          (r) => r.name === "quizplayer"
+        );
+        if (!quizRole) {
+          return interaction.reply({
+            content: '❌ Could not find a role named "quizplayer".',
+            ephemeral: true,
+          });
+        }
+
+        // Collect members with quizplayer role who are connected to voice
+        const members = quizRole.members.filter((m) => m.voice.channel);
+        if (members.size === 0) {
+          return interaction.reply({
+            content: "❌ No quizplayers are in a voice channel.",
+            ephemeral: true,
+          });
+        }
+
+        const players = Array.from(members.values());
+        // Shuffle members
+        players.sort(() => Math.random() - 0.5);
+
+        // Determine number of teams
+        let teams = [];
+        if (numTeams) {
+          const size = Math.ceil(players.length / numTeams);
+          for (let i = 0; i < numTeams; i++) {
+            teams.push(players.slice(i * size, (i + 1) * size));
+          }
+        } else if (teamSize) {
+          for (let i = 0; i < players.length; i += teamSize) {
+            teams.push(players.slice(i, i + teamSize));
+          }
+        }
+
+        // Get the category of that voice channel
+        const category = interaction.member.voice.channel.parent;
+
+        if (!category) {
+          return interaction.reply({
+            content: "❌ Your voice channel is not in a category.",
+            ephemeral: true,
+          });
+        }
+
+        // Create channels & move members
+        for (let i = 0; i < teams.length; i++) {
+          if (teams[i].length === 0) continue;
+          const teamChannel = await interaction.guild.channels.create({
+            name: `Team ${i + 1}`,
+            type: ChannelType.GuildVoice,
+            parent: category.id,
+          });
+
+          for (const member of teams[i]) {
+            try {
+              await member.voice.setChannel(teamChannel);
+            } catch (err) {
+              console.error(`Failed to move ${member.user.tag}`, err);
+            }
+          }
+        }
+
+        await interaction.reply({
+          content: `✅ Created ${teams.length} team(s) and moved players!`,
+        });
+      }
     } else if (subcommand === "scoreboard") {
       await interaction.deferReply();
 
