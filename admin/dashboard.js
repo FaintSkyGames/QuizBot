@@ -8,12 +8,21 @@ const client = require('../src/index')
 const multer = require('multer');
 const upload = multer();
 const { getActivities } = require('../src/functions/handlers/handleCommands');
+const mongoose = require('mongoose');
 
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(upload.fields([{ name: 'new-bot-avatar' }, { name: 'new-bot-banner' }]));
 
+// MongoDB connection
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+}).then(() => console.log('MongoDB connected'))
+  .catch(err => console.error('MongoDB connection error:', err));
 
+const quizCurrentSchema = require('../src/schemas/quizCurrentSchema');
+const quizPlayersSchema = require('../src/schemas/quizPlayersSchema');
 
 function loadConfig() {
     const configPath = path.join(__dirname, '../config.json');
@@ -23,9 +32,56 @@ function loadConfig() {
     return {};
 }
 
+
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'views', 'index.html'));
 });
+
+//app.use('/public', express.static(path.join(__dirname, 'public')));
+
+
+
+// Function to fetch dynamic Scoreboard
+async function getScoreboard() {
+    console.log("getting scores");
+    try {
+        const players = await quizPlayersSchema.find().sort({totalPoints: -1});
+        nicknameMap = new Map(players.map(p => [p.userId, p.name]));
+
+        // Map to displayName + points
+        const scoreboard = players.map(player => {
+            return {
+                displayName: nicknameMap.get(player.userId) || player.userId || 'Unknown',
+                points: player.totalPoints
+            };
+        });
+
+        return scoreboard;
+
+    } catch (err) {
+        console.error('Error fetching scoreboard:', err);
+        return [];
+    }
+}
+
+// Serve static HTML page
+app.get('/scoreboard', (req, res) => {
+    res.sendFile(path.join(__dirname, 'views', 'scoreboard.html'));
+});
+
+// JSON endpoint for frontend JS
+app.get('/scoreboard/json', async (req, res) => {
+    console.log("found scores");
+    const scoreboard = await getScoreboard();
+
+    console.log('Scores', scoreboard);
+    res.json(scoreboard);
+});
+
+
+
+
+
 
 app.get('/bot', (req, res) => {
     res.sendFile(path.join(__dirname, 'views', 'botprofile.html'));
@@ -46,6 +102,7 @@ app.get('/errors', (req, res) => {
 app.get('/guilds', (req, res) => {
     res.sendFile(path.join(__dirname, 'views', 'guilds.html'));
 });
+
 
 app.get('/api/bot-info', async (req, res) => {
     try {
