@@ -5,6 +5,7 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildVoiceStates, 
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessageReactions, // ✅ Added this line
         GatewayIntentBits.DirectMessages
