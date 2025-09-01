@@ -367,7 +367,7 @@ module.exports = {
         await interaction.editReply({ embeds: [embed] });
       }
     } else if (subcommand === "end") {
-      // Only allow hosts and bot mannages to trigger command
+      // Only allow hosts and bot managers to trigger command
       const triggerMember = await guild.members.fetch(interaction.user.id);
       if (
         !triggerMember.roles.cache.has(botManager.id) &&
@@ -504,27 +504,59 @@ module.exports = {
         interaction.editReply(error);
       }
     } else if (subcommand === "give") {
-      const member = interaction.member;
-      if (!member.roles.cache.some((role) => role.name === QUIZ_HOST_ROLE)) {
+      // Only allow hosts and bot managers to trigger command
+      const triggerMember = await guild.members.fetch(interaction.user.id);
+      if (
+        !triggerMember.roles.cache.has(botManager.id) &&
+        !triggerMember.roles.cache.has(hostRole.id)
+      ) {
         return interaction.reply({
           content: "❌ You need the **quizhost** role to run this command!",
           ephemeral: true,
         });
       }
 
-      const playerId = interaction.options.getUser("player");
-      const toGive = interaction.options.getNumber("points");
+      // If no host present then no quiz active
+      const host = guild.members.cache.filter((member) =>
+        member.roles.cache.has(hostRole.id)
+      );
+
+      if (host.size <= 0) {
+        return interaction.reply({
+          content: "❌ No quiz running.",
+          ephemeral: true,
+        });
+      }
+
+      const playerUser = interaction.options.getUser("player");
+      const pointsToGive = interaction.options.getNumber("points");
+
+      // Check if player is in quiz database
+      const playerInQuiz = await quizCurrentSchema.findOne({
+        userId: playerUser.id,
+      });
+
+      if (!playerInQuiz) {
+        return interaction.reply({
+          content: "❌ Player has not joined the quiz.",
+          ephemeral: true,
+        });
+      }
 
       try {
-        const playerDoc = await quizCurrentSchema.findOne({ userId: playerId });
+        const playerDoc = await quizCurrentSchema.findOne({
+          userId: playerUser.id,
+        });
 
-        playerDoc.points += toGive;
+        playerDoc.points += pointsToGive;
         await playerDoc.save();
 
         const embed = new EmbedBuilder()
           .setColor("Random")
           .setTitle("Give Points")
-          .setDescription("Successfully updated ")
+          .setDescription(
+            `Successfully updated. \n ${pointsToGive} points given.`
+          )
           .setTimestamp();
 
         await interaction.reply({ embeds: [embed] });
@@ -533,27 +565,59 @@ module.exports = {
         interaction.reply("error");
       }
     } else if (subcommand === "take") {
-      const member = interaction.member;
-      if (!member.roles.cache.some((role) => role.name === QUIZ_HOST_ROLE)) {
+      // Only allow hosts and bot managers to trigger command
+      const triggerMember = await guild.members.fetch(interaction.user.id);
+      if (
+        !triggerMember.roles.cache.has(botManager.id) &&
+        !triggerMember.roles.cache.has(hostRole.id)
+      ) {
         return interaction.reply({
           content: "❌ You need the **quizhost** role to run this command!",
           ephemeral: true,
         });
       }
 
-      const playerId = interaction.options.getUser("player");
-      const toTake = interaction.options.getNumber("points");
+      // If no host present then no quiz active
+      const host = guild.members.cache.filter((member) =>
+        member.roles.cache.has(hostRole.id)
+      );
+
+      if (host.size <= 0) {
+        return interaction.reply({
+          content: "❌ No quiz running.",
+          ephemeral: true,
+        });
+      }
+
+      const playerUser = interaction.options.getUser("player");
+      const pointsToRemove = interaction.options.getNumber("points");
+
+      // Check if player is in quiz database
+      const playerInQuiz = await quizCurrentSchema.findOne({
+        userId: playerUser.id,
+      });
+
+      if (!playerInQuiz) {
+        return interaction.reply({
+          content: "❌ Player has not joined the quiz.",
+          ephemeral: true,
+        });
+      }
 
       try {
-        const playerDoc = await quizCurrentSchema.findOne({ userId: playerId });
+        const playerDoc = await quizCurrentSchema.findOne({
+          userId: playerUser.id,
+        });
 
-        playerDoc.points -= toTake;
+        playerDoc.points -= pointsToRemove;
         await playerDoc.save();
 
         const embed = new EmbedBuilder()
           .setColor("Random")
           .setTitle("Take Points")
-          .setDescription("Successfully updated ")
+          .setDescription(
+            `Successfully updated. \n ${pointsToRemove} points removed.`
+          )
           .setTimestamp();
 
         await interaction.reply({ embeds: [embed] });
