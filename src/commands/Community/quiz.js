@@ -12,9 +12,7 @@ const quizPlayersSchema = require("../../schemas/quizPlayersSchema");
 const quizCurrentSchema = require("../../schemas/quizCurrentSchema");
 const quizOverviewSchema = require("../../schemas/quizOverviewSchema");
 const player = require("./player");
-
-const QUIZ_HOST_ROLE = "quizhost"; // name of the role
-const QUIZ_PLAYER_ROLE = "quizplayer";
+const {QUIZ_HOST_ROLE, QUIZ_PLAYER_ROLE} = require("../../utils/constants.js")
 
 module.exports = {
   data: new SlashCommandBuilder()

@@ -5,9 +5,10 @@ const {
 } = require("discord.js");
 const quizPlayersSchema = require("../../schemas/quizPlayersSchema");
 const { user } = require("../..");
+const {QUIZ_HOST_ROLE, QUIZ_PLAYER_ROLE} = require("../../utils/constants.js")
 
-const QUIZ_HOST_ROLE = "quizhost";
-const QUIZ_PLAYER_ROLE = "quizplayer";
+// const QUIZ_HOST_ROLE = "quizhost";
+// const QUIZ_PLAYER_ROLE = "quizplayer";
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -201,8 +202,6 @@ module.exports = {
       const name = interaction.options.getString("name");
 
       if (existingUser) {
-        console.log("Existing user found.");
-        console.log(existingUser);
         try {
           let extraDetails = ``;
 
