@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Leaderboard</title>
+  <link rel="stylesheet" href="{{STYLE}}">
+</head>
+<body>
+  <main class="board">
+    <section class="board-panel">
+      <header class="board-header">
+        <h1 class="board-title">Leaderboard</h1>
+        <p class="board-subtitle">Quiz Rankings</p>
+      </header>
+
+      <div class="board-list" id="leaderboard-container">
+        <!-- Player cards will be dynamically injected here -->
+      </div>
+    </section>
+  </main>
+
+  <script>
+    async function fetchLeaderboard() {
+      try {
+        const res = await fetch('/leaderboard/json');
+        if (!res.ok) throw new Error('Failed to fetch');
+        return await res.json();
+      } catch (err) {
+        console.error(err);
+        return [];
+      }
+    }
+
+    function createPlayerCard(player, rank) {
+      const avatarUrl = player.avatar
+        ? `https://cdn.discordapp.com/avatars/${player.userId}/${player.avatar}.png`
+        : `https://cdn.discordapp.com/embed/avatars/${parseInt(player.userId) % 5}.png`;
+
+      return `
+        <div class="row-card">
+          <div class="rank">${rank}</div>
+          <div class="player">
+            <img class="avatar" src="${avatarUrl}" alt="${player.name}">
+            <div>
+              <div class="name">${player.name}</div>
+            </div>
+          </div>
+          <div class="score">${player.points}</div>
+        </div>
+      `;
+    }
+
+    async function updateLeaderboard() {
+      const container = document.getElementById('leaderboard-container');
+      container.innerHTML = '<div class="empty">Loading...</div>';
+      const leaderboard = await fetchLeaderboard();
+
+      if (leaderboard.length === 0) {
+        container.innerHTML = '<div class="empty">No players found</div>';
+        return;
+      }
+
+      container.innerHTML = leaderboard
+        .map((p, i) => createPlayerCard(p, i + 1))
+        .join('');
+    }
+
+    window.onload = () => {
+      updateLeaderboard();
+      setInterval(updateLeaderboard, 20000); // refresh every 35s
+    };
+  </script>
+</body>
+</html>

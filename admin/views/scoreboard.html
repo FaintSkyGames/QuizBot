@@ -1,185 +1,195 @@
 <!DOCTYPE html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Scoreboard</title>
+    <link rel="stylesheet" href="{{STYLE}}" />
+  </head>
+  <body>
+    <main class="board">
+      <section class="board-panel">
+        <header class="board-header">
+          <h1 class="board-title">Scoreboard</h1>
+          <p class="board-subtitle">Current Scores</p>
+        </header>
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DiscoBase - Leaderboard</title>
-    <link rel="shortcut icon" href="https://i.ibb.co/1QRfxtD/Untitled-design.png" type="image/x-icon">
-    <link rel="stylesheet" href="config.css">
-
-    <style>
-        :root {
-            --primary-color: #a69cec;
-            --secondary-color: #00cec9;
-            --background-color: #2d3436;
-            --card-background: rgba(255, 255, 255, 0.1);
-            --text-color: #ffffff;
-            --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, var(--background-color), #4834d4);
-            color: var(--text-color);
-            line-height: 1.6;
-            min-height: 100vh;
-        }
-
-        .navbar {
-            background-color: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            padding: 1rem 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: fixed;
-            width: 100%;
-            top: 0;
-            z-index: 1000;
-        }
-
-        .bot-button {
-            display: flex;
-            align-items: center;
-            margin-left: 2rem;
-            /* Adjust spacing as needed */
-        }
-
-        .bot-button .nav-link {
-            display: flex;
-            align-items: center;
-            background-color: var(--secondary-color);
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            color: var(--text-color);
-            transition: background-color 0.3s ease;
-        }
-
-        .bot-button .nav-link:hover {
-            background-color: #009999;
-            /* Darker shade for hover effect */
-        }
-
-        .bot-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            overflow: hidden;
-            margin-right: 0.5rem;
-        }
-
-        .bot-icon img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .bot-name {
-            font-weight: bold;
-        }
-
-        .logo {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: var(--text-color);
-        }
-
-        nav ul {
-            list-style-type: none;
-            display: flex;
-            gap: 2rem;
-        }
-
-        .nav-link {
-            color: var(--text-color);
-            text-decoration: none;
-            font-weight: bold;
-            transition: color 0.3s ease, border-bottom 0.3s ease;
-            padding-bottom: 0.25rem;
-        }
-
-        .nav-link:hover {
-            color: var(--secondary-color);
-            border-bottom: 2px solid var(--secondary-color);
-        }
-    </style>
-
-    <link rel="stylesheet" href="leaderboard.css">
-
-</head>
-
-<body>
-    <div class="navbar">
-        <h1 class="logo">DiscoBase</h1>
-        <nav>
-            <ul>
-                <li><a href="/" class="nav-link">Home</a></li>
-                <li><a href="/config" class="nav-link">Manage Configuration</a></li>
-                <li><a href="/commands" class="nav-link">Commands</a></li>
-                <li><a href="/errors" class="nav-link">Error</a></li>
-                <li><a href="/leaderboard" class="nav-link">Leaderboard</a></li>
-                <li><a href="/bot" class="nav-link">Bot</a></li>
-            </ul>
-        </nav>
-    </div>
-
-    <div class="container">
-        <h1 class="title">Leaderboard</h1>
-
-        <div class="leaderboard-grid" id="leaderboard-container">
-            <!-- Player cards will be dynamically added here -->
+        <div class="board-list" id="leaderboard-container">
+          <!-- Player cards will be dynamically injected here -->
         </div>
-    </div>
+      </section>
+    </main>
 
     <script>
-        async function fetchScoreboard() {
-            try {
-                const response = await fetch('/scoreboard/json'); // Backend JSON 
-                console.log(response);
-                if (!response.ok) throw new Error('Network response was not ok');
-                const data = await response.json();
-                return data; // Array of { displayName, points }
-            } catch (error) {
-                console.error('Error fetching scoreboard:', error);
-                return [];
-            }
+      async function fetchLeaderboard() {
+        try {
+          const res = await fetch("/scoreboard/json");
+          if (!res.ok) throw new Error("Failed to fetch");
+          return await res.json();
+        } catch (err) {
+          console.error(err);
+          return [];
         }
+      }
 
-        function createPlayerCard(player, rank) {
-            return `
-            <div class="player-card">
-                <div class="player-header">
-                    <h3 class="player-name">${player.displayName}</h3>
-                </div>
-                <div class="player-points">Points: ${player.points}</div>
-                <div class="player-rank">Rank: ${rank}</div>
+      function createPlayerCard(player, rank) {
+        const avatarUrl = player.avatar
+          ? `https://cdn.discordapp.com/avatars/${player.userId}/${player.avatar}.png`
+          : `https://cdn.discordapp.com/embed/avatars/${
+              parseInt(player.userId) % 5
+            }.png`;
+
+        const card = document.createElement("div");
+        card.className = "row-card";
+        card.dataset.userid = player.userId;
+        card.innerHTML = `
+          <div class="rank">${rank}</div>
+          <div class="player">
+            <img class="avatar" src="${avatarUrl}" alt="${player.name}">
+            <div>
+              <div class="name">${player.name}</div>
             </div>
+          </div>
+          <div class="score">${player.points}</div>
         `;
+        return card;
+      }
+
+      //   function createPlayerCard(player, rank) {
+      //     const avatarUrl = player.avatar
+      //       ? `https://cdn.discordapp.com/avatars/${player.userId}/${player.avatar}.png`
+      //       : `https://cdn.discordapp.com/embed/avatars/${
+      //           parseInt(player.userId) % 5
+      //         }.png`;
+
+      //     // data-userid="${player.userId}"
+      //     return `
+      //     <div class="row-card new" data-userid="${player.userId}">
+      //       <div class="rank">${rank}</div>
+      //       <div class="player">
+      //         <img class="avatar" src="${avatarUrl}" alt="${player.name}">
+      //         <div>
+      //           <div class="name">${player.name}</div>
+
+      //       </div>
+      //       <div class="score">${player.points}</div>
+      //     </div>
+      //   `;
+      //   }
+
+      async function updateLeaderboard() {
+        const container = document.getElementById("leaderboard-container");
+        const newData = await fetchLeaderboard();
+
+        if (newData.length === 0) {
+          container.innerHTML = '<div class="empty">No players found</div>';
+          return;
         }
 
-        async function updateLeaderboard() {
-            const container = document.getElementById('leaderboard-container');
-            container.innerHTML = '';
-            const scoreboard = await fetchScoreboard();
+        const oldCards = new Map(
+          Array.from(container.children).map((el) => [el.dataset.userid, el])
+        );
 
-            scoreboard.forEach((player, i) => {
-                container.innerHTML += createPlayerCard(player, i + 1);
+        newData.forEach((player, i) => {
+          const existing = oldCards.get(player.userId);
+
+          if (existing) {
+            // Update rank
+            existing.querySelector(".rank").textContent = i + 1;
+
+            // Update name if changed
+            const nameEl = existing.querySelector(".name");
+            if (nameEl.textContent !== player.name) {
+              nameEl.textContent = player.name;
+            }
+
+            // Update score if changed
+            const scoreEl = existing.querySelector(".score");
+            if (scoreEl.textContent !== String(player.points)) {
+              scoreEl.textContent = player.points;
+            }
+
+            // Update avatar if changed
+            const avatarEl = existing.querySelector(".avatar");
+            const newAvatarUrl = player.avatar
+              ? `https://cdn.discordapp.com/avatars/${player.userId}/${player.avatar}.png`
+              : `https://cdn.discordapp.com/embed/avatars/${
+                  parseInt(player.userId) % 5
+                }.png`;
+            if (avatarEl.src !== newAvatarUrl) {
+              avatarEl.src = newAvatarUrl;
+            }
+
+            container.appendChild(existing); // move to new order
+          } else {
+            // New player
+            const newCard = createPlayerCard(player, i + 1);
+            newCard.style.opacity = 0;
+            container.appendChild(newCard);
+            requestAnimationFrame(() => {
+              newCard.style.transition = "opacity 0.5s";
+              newCard.style.opacity = 1;
             });
-        }
+          }
+        });
 
-        window.onload = function () {
-            updateLeaderboard();
-            // Optionally refresh every 35 seconds
-            setInterval(updateLeaderboard, 35000);
-        }
+        // Remove players not in newData
+        oldCards.forEach((card, id) => {
+          if (!newData.find((p) => p.userId === id)) {
+            card.style.transition = "opacity 0.5s";
+            card.style.opacity = 0;
+            setTimeout(() => card.remove(), 500);
+          }
+        });
+      }
+
+      //   async function updateLeaderboard() {
+      //     const container = document.getElementById("leaderboard-container");
+      //     const newData = await fetchLeaderboard();
+
+      //     if (newData.length === 0) {
+      //       container.innerHTML = '<div class="empty">No players found</div>';
+      //       return;
+      //     }
+
+      //     const oldCards = Array.from(container.children);
+      //     const oldPositions = {};
+      //     oldCards.forEach((card) => {
+      //       const id = card.dataset.userid;
+      //       oldPositions[id] = card.getBoundingClientRect().top;
+      //     });
+
+      //     // Generate new HTML
+      //     container.innerHTML = newData
+      //       .map((p, i) => createPlayerCard(p, i + 1))
+      //       .join("");
+
+      //     const newCards = Array.from(container.children);
+
+      //     // Animate FLIP for position changes
+      //     newCards.forEach((card) => {
+      //       const id = card.dataset.userid;
+      //       const oldTop = oldPositions[id] || card.getBoundingClientRect().top;
+      //       const newTop = card.getBoundingClientRect().top;
+      //       const delta = oldTop - newTop;
+
+      //       if (delta) {
+      //         card.style.transform = `translateY(${delta}px)`;
+      //         card.style.transition = "transform 0s";
+      //         requestAnimationFrame(() => {
+      //           card.style.transition = "transform 0.5s ease, opacity 0.5s ease";
+      //           card.style.transform = "translateY(0)";
+      //           card.classList.remove("new", "removed");
+      //         });
+      //       } else {
+      //         card.style.opacity = 1; // new players fade in
+      //       }
+      //     });
+      //   }
+
+      window.onload = () => {
+        updateLeaderboard();
+        setInterval(updateLeaderboard, 20000); // refresh every 35s
+      };
     </script>
-</body>
-
+  </body>
 </html>
