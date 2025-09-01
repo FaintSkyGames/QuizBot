@@ -12,7 +12,11 @@ const quizPlayersSchema = require("../../schemas/quizPlayersSchema");
 const quizCurrentSchema = require("../../schemas/quizCurrentSchema");
 const quizOverviewSchema = require("../../schemas/quizOverviewSchema");
 const player = require("./player");
-const {QUIZ_HOST_ROLE, QUIZ_PLAYER_ROLE} = require("../../utils/constants.js")
+const {
+  QUIZ_HOST_ROLE,
+  QUIZ_PLAYER_ROLE,
+  BOT_MANAGER_ROLE,
+} = require("../../utils/constants.js");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -170,34 +174,32 @@ module.exports = {
         .setDescription("Show the leaderboard for all the quizes")
     ),
   async execute(interaction) {
-    // Command execution logic goes here
-
     // Get current subcommand
     const subcommand = interaction.options.getSubcommand();
-
     const guild = interaction.guild;
+    
+    // Error handling
+    const hostRole = guild.roles.cache.find((r) => r.name === QUIZ_HOST_ROLE);
+    if (!hostRole)
+      return interaction.editReply(`The role "${QUIZ_HOST_ROLE}" is required.`);
 
-    //const quizPlayersDB = mongoose.models.players  || mongoose.model('players', quizPlayersSchema);
-    //const PlayersDB = mongoose.models.PlayersDB || mongoose.model('PlayersDB', quizPlayersSchema, 'players');
+    const playerRole = guild.roles.cache.find((r) => r.name === QUIZ_PLAYER_ROLE);
+    if (!playerRole)
+      return interaction.editReply(`The role "${QUIZ_PLAYRE_ROLE}" is required.`);
+
+    const botManager = guild.roles.cache.find((r) => r.name === BOT_MANAGER_ROLE);
 
     if (subcommand == "start") {
       try {
         await interaction.deferReply();
 
-        // Find the role by name
-        const hostRole = guild.roles.cache.find(
-          (r) => r.name === QUIZ_HOST_ROLE
-        );
-
-        if (!hostRole)
-          return interaction.editReply(
-            `The role "${QUIZ_HOST_ROLE}" is required.`
-          );
-
         await guild.members.fetch();
         const host = guild.members.cache.filter((member) =>
           member.roles.cache.has(hostRole.id)
         );
+
+        const hostUser = interaction.options.getUser("host");
+        const hostEntry = await quizPlayersSchema.findOne({userId: hostUser.id});
 
         // if host present then quiz active
         if (host.size > 0) {
@@ -210,29 +212,39 @@ module.exports = {
             .setColor("Random")
             .setTitle("Start Quiz")
             .setDescription(
-              `Error: No quiz started. There is an existing quiz hosted by ${hostUsernames}`
+              `Error: No quiz started. \n There is an existing quiz hosted by ${hostUsernames}`
             )
             .setTimestamp();
 
           await interaction.editReply({ embeds: [embed] });
+        } else if (!hostEntry){
+          const embed = new EmbedBuilder()
+            .setColor("Random")
+            .setTitle("Start Quiz")
+            .setDescription(`Error: No quiz started. \n ${hostUser} is not in the database.`)
+            .setTimestamp();
+
+          await interaction.editReply({ embeds: [embed] });
+
         } else {
-          // Assign host
-          const hostId = interaction.options.getUser("host");
           // Assign role
-          const member = await guild.members.fetch(hostId);
-          member.roles
+          const hostMember = await guild.members.fetch(hostUser);
+          hostMember.roles
             .add(hostRole)
             .then(() =>
               console.log(
-                `${member.user.tag} was given the role "${QUIZ_HOST_ROLE}"!`
+                `@${hostUser.tag} was given the role "${QUIZ_HOST_ROLE}"!`
               )
             )
             .catch((err) => console.error(`Failed to assign role: ${err}`));
 
+          
+          const displayName = hostEntry.name || hostUser.username;
+
           const embed = new EmbedBuilder()
             .setColor("Random")
             .setTitle("Start Quiz")
-            .setDescription(`${member}s quiz is starting soon!`)
+            .setDescription(`${displayName}'s quiz is starting soon!`)
             .setTimestamp();
 
           await interaction.editReply({ embeds: [embed] });
