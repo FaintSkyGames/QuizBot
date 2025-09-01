@@ -72,61 +72,51 @@ module.exports = {
         )
     ),
   async execute(interaction) {
-    // Command execution logic goes here
+    // Error handle
+    const hostRole = interaction.guild.roles.cache.find(
+      (role) => role.name === QUIZ_HOST_ROLE
+    );
+    if (!hostRole)
+      return interaction.editReply(`The role "${QUIZ_HOST_ROLE}" is required.`);
+
+    const playerRole = interaction.guild.roles.cache.find(
+      (role) => role.name === QUIZ_PLAYER_ROLE
+    );
+    if (!playerRole)
+      return interaction.editReply(
+        `The role "${QUIZ_PLAYER_ROLE}" is required.`
+      );
+
     // Get current subcommand
     const subcommand = interaction.options.getSubcommand();
 
-    // Returns userId number not the @
-    const userId = interaction.options.getUser("user");
-    const existingSetup = await quizPlayersSchema.findOne({ userId: userId });
-
     if (subcommand == "add") {
+      // Returns user object
+      const discordUser = interaction.options.getUser("user");
       const name = interaction.options.getString("name");
 
-      if (existingSetup) {
+      const existingUser = await quizPlayersSchema.findOne({
+        userId: discordUser.id,
+      });
+
+      if (existingUser) {
         return interaction.reply({ content: "User already added." });
       }
 
       try {
         await quizPlayersSchema.create({
-          userId: userId,
-          username: userId.username,
+          userId: discordUser.id,
+          username: discordUser.username,
           name: name,
+          avatar: discordUser.avatar,
           totalPoints: 0,
         });
-
-        const quizRole = interaction.guild.roles.cache.find(
-          (role) => role.name === QUIZ_PLAYER_ROLE
-        );
-
-        // Returns userId number not the @
-        const user = interaction.options.getUser("user");
-
-        // Convert to a GuildMember (so we can access .roles)
-        const member = await interaction.guild.members.fetch(user.id);
-
-        if (!member) return console.error("Member not found");
-        if (!quizRole) return console.error("Role not found");
-
-        console.log(
-          "Bot highest role:",
-          interaction.guild.members.me.roles.highest.name
-        );
-        console.log("Target member highest role:", member.roles.highest.name);
-        console.log("Target role to add:", quizRole.name);
-
-        try {
-          await member.roles.add(quizRole);
-          console.log(`Added "quizplayer" role to ${member}`);
-        } catch (err) {
-          console.error(`Failed to add role:`, err);
-        }
 
         if (name === null) {
           const embed = new EmbedBuilder()
             .setColor("Random")
             .setTitle("Add Player")
-            .setDescription("Successfully setup " + userId.username)
+            .setDescription("Successfully setup " + discordUser.username)
             .setTimestamp();
 
           await interaction.reply({ embeds: [embed] });
@@ -136,7 +126,7 @@ module.exports = {
             .setTitle("Add Player")
             .setDescription(
               "Successfully setup @" +
-                userId.username +
+                discordUser.username +
                 " ! Nice to meet you " +
                 name +
                 "."
@@ -149,29 +139,43 @@ module.exports = {
         interaction.reply(error);
       }
     } else if (subcommand === "remove") {
-      if (existingSetup) {
-        const quizRole = interaction.guild.roles.cache.find(
-          (role) => role.name === QUIZ_PLAYER_ROLE
-        );
+      // Returns user object
+      const discordUser = interaction.options.getUser("user");
+      const existingUser = await quizPlayersSchema.findOne({
+        userId: discordUser.id,
+      });
 
+      if (existingUser) {
+        // Remove any quiz related roles
         const member =
-          interaction.guild.members.cache.get(user.id) ||
-          (await interaction.guild.members.fetch(user.id));
+          interaction.guild.members.cache.get(discordUser.id) ||
+          (await interaction.guild.members.fetch(discordUser.id));
 
         try {
-          await member.roles.remove(quizRole);
-          console.log(`Removed "quizplayer" role to ${user}`);
+          await member.roles.remove(playerRole);
+          console.log(
+            `Removed ${QUIZ_PLAYER_ROLE} role from ${discordUser.tag}`
+          );
         } catch (err) {
-          console.error(`Failed to remove role:`, err);
+          console.error(`Failed to remove player role:`, err);
         }
 
-        await quizPlayersSchema.findOneAndDelete({ userId: userId });
+        try {
+          await member.roles.remove(hostRole);
+          console.log(`Removed ${QUIZ_HOST_ROLE} role from ${discordUser.tag}`);
+        } catch (err) {
+          console.error(`Failed to remove host role:`, err);
+        }
 
+        // Delete
+        await quizPlayersSchema.findOneAndDelete({ userId: discordUser.id });
+
+        // Respond
         const embed = new EmbedBuilder()
           .setColor("Random")
           .setTitle("Remove Player")
           .setDescription(
-            "@" + userId.username + " has been removed from the database."
+            "@" + discordUser.tag + " has been removed from the database."
           )
           .setTimestamp();
 
@@ -181,38 +185,53 @@ module.exports = {
           .setColor("Random")
           .setTitle("Remove Player")
           .setDescription(
-            "User @" + userId.username + "is not present in the database."
+            "User @" + discordUser.tag + " is not present in the database."
           )
           .setTimestamp();
 
         await interaction.reply({ embeds: [embed] });
       }
     } else if (subcommand === "update") {
+      // Returns user object
+      const discordUser = interaction.options.getUser("user");
+      const existingUser = await quizPlayersSchema.findOne({
+        userId: discordUser.id,
+      });
+
       const name = interaction.options.getString("name");
 
-      if (existingSetup) {
+      if (existingUser) {
+        console.log("Existing user found.");
+        console.log(existingUser);
         try {
-          let extraDetails = "";
+          let extraDetails = ``;
 
-          if (name === existingSetup.name) {
-            extraDetails += "IRL name remained the same. ";
+          if (name === existingUser.name) {
+            extraDetails += `Name remained the same. \n`;
           } else if (name === null) {
-            extraDetails += "IRL name erased. ";
+            extraDetails += `Name erased. \n`;
           } else {
-            extraDetails += "IRL name updated to " + name + ". ";
+            extraDetails += `Name updated to ${name}. \n`;
           }
 
-          if (userId.username === existingSetup.username) {
-            extraDetails += "Username remained the same. ";
+          if (discordUser.username === existingUser.username) {
+            extraDetails += `Username remained the same. \n`;
           } else {
-            extraDetails += "Username updated to " + userId.username + ". ";
+            extraDetails += `Username updated to ${discordUser.username}. \n`;
+          }
+
+          if (discordUser.avatar === existingUser.avatar) {
+            extraDetails += `Avatar remained the same. `;
+          } else {
+            extraDetails += `Avatar updated. `;
           }
 
           await quizPlayersSchema.findOneAndUpdate(
-            { userId },
+            { userId: discordUser.id },
             {
-              username: userId.username,
+              username: discordUser.username,
               name: name,
+              avatar: discordUser.avatar,
             }
           );
 
@@ -220,33 +239,40 @@ module.exports = {
             .setColor("Random")
             .setTitle("Update Player")
             .setDescription(
-              "Successfully updated @" +
-                existingSetup.username +
-                " ! " +
-                extraDetails
+              `Successfully updated @${discordUser.tag}! \n ${extraDetails}`
             )
             .setTimestamp();
 
           await interaction.reply({ embeds: [embed] });
         } catch (error) {
-          interaction.reply(error);
+          interaction.reply(`Something went wrong. `, error);
         }
       } else {
         const embed = new EmbedBuilder()
           .setColor("Random")
           .setTitle("Update player")
-          .setDescription("@" + userId.username + " is not in the database.")
+          .setDescription("@" + discordUser.tag + " is not in the database.")
           .setTimestamp();
 
         await interaction.reply({ embeds: [embed] });
       }
     } else if (subcommand === "points") {
+      // Returns user object
+      const discordUser = interaction.options.getUser("user");
+      const existingUser = await quizPlayersSchema.findOne({
+        userId: discordUser.id,
+      });
+
+      if (!existingUser) {
+        return interaction.reply({ content: "No user present." });
+      }
+
       let extraDetails = "";
 
-      if (existingSetup.name != null) {
-        extraDetails += existingSetup.name;
+      if (existingUser.name != null) {
+        extraDetails += existingUser.name;
       } else {
-        extraDetails += `@${existingSetup.username}`;
+        extraDetails += `@${existingUser.username}`;
       }
 
       const embed = new EmbedBuilder()
@@ -254,7 +280,7 @@ module.exports = {
         .setTitle("Player Points")
         .setDescription(
           `Congratulations ${extraDetails}, you have ${
-            Number(existingSetup.totalPoints) || 0
+            Number(existingUser.totalPoints) || 0
           } points!`
         )
         .setTimestamp();
