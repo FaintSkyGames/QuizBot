@@ -1,0 +1,137 @@
+/* General reset */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+  background: #121212; /* dark background */
+  color: #e0e0e0;      /* light text */
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+/* Board container */
+.board {
+  width: 100%;
+  max-width: 600px;
+}
+
+/* Panel */
+.board-panel {
+  background: #1e1e1e; /* dark panel */
+  border-radius: 1rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  padding: 2rem;
+}
+
+/* Header */
+.board-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.board-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 0.5rem;
+}
+
+.board-subtitle {
+  font-size: 1rem;
+  color: #bbbbbb;
+}
+
+/* List container */
+.board-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+/* Row card */
+.row-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  position: relative;
+  transition: transform 0.5s ease, opacity 0.3s ease;
+  opacity: 1;
+}
+
+.row-card:hover {
+  transform: scale(1.02);
+}
+
+/* Fade in/out */
+.row-card.new {
+  opacity: 0;
+  transform: translateY(-20px);
+}
+
+.row-card.removed {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+/* Rank highlight */
+.rank {
+  font-size: 1.25rem;
+  font-weight: 700;
+  width: 2rem;
+  text-align: center;
+  color: #ffd700; /* gold by default */
+}
+
+.row-card:nth-child(2) .rank { color: #c0c0c0; } /* silver 2nd */
+.row-card:nth-child(3) .rank { color: #cd7f32; } /* bronze 3rd */
+
+/* Player info */
+.player {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  margin-left: 1rem;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-right: 0.75rem;
+  border: 2px solid #555;
+}
+
+.name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* Score */
+.score {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #4fc3f7;
+  min-width: 3rem;
+  text-align: right;
+}
+
+/* Empty states */
+.empty {
+  text-align: center;
+  padding: 2rem;
+  color: #888;
+  font-style: italic;
+}
+
