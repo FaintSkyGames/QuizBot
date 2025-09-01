@@ -178,6 +178,10 @@ module.exports = {
     const subcommand = interaction.options.getSubcommand();
     const guild = interaction.guild;
 
+    // Refresh cache
+    await guild.roles.fetch();
+    await guild.members.fetch();
+
     // Error handling
     const hostRole = guild.roles.cache.find((r) => r.name === QUIZ_HOST_ROLE);
     if (!hostRole)
@@ -363,30 +367,54 @@ module.exports = {
         await interaction.editReply({ embeds: [embed] });
       }
     } else if (subcommand === "end") {
-      const member = interaction.member;
-      if (!member.roles.cache.some((role) => role.name === QUIZ_HOST_ROLE)) {
+      // Only allow hosts and bot mannages to trigger command
+      const triggerMember = await guild.members.fetch(interaction.user.id);
+      if (
+        !triggerMember.roles.cache.has(botManager.id) &&
+        !triggerMember.roles.cache.has(hostRole.id)
+      ) {
         return interaction.reply({
           content: "❌ You need the **quizhost** role to run this command!",
           ephemeral: true,
         });
       }
 
+      // If no host present then no quiz active
+      const host = guild.members.cache.filter((member) =>
+        member.roles.cache.has(hostRole.id)
+      );
+
+      if (host.size <= 0) {
+        return interaction.reply({
+          content: "❌ No quiz running.",
+          ephemeral: true,
+        });
+      }
+
+      const hostUser = interaction.options.getUser("host");
+      const hostMember = await guild.members.fetch(hostUser.id);
+
+      if (!hostMember.roles.cache.has(hostRole.id)) {
+        return interaction.reply({
+          content: "❌ The quiz host is incorrect.",
+          ephemeral: true,
+        });
+      }
+
       await interaction.deferReply();
-
       try {
-        const hostId = interaction.options.getUser("host");
-
-        const scores = await quizCurrentSchema.find().sort({ points: -1 });
-        const players = await quizPlayersSchema.find();
+        const currentQuiz = await quizCurrentSchema.find().sort({ points: -1 });
+        const allPlayers = await quizPlayersSchema.find();
 
         // Build nickname map
-        const nicknameMap = new Map(players.map((p) => [p.userId, p.name]));
-
-        // post results
-        //await interaction.deferReply();
+        const nicknameMap = new Map(allPlayers.map((p) => [p.userId, p.name]));
 
         // Build leaderboard string
-        const scoreboard = buildScoreboard(scores, nicknameMap, scores.length);
+        const scoreboard = buildScoreboard(
+          currentQuiz,
+          nicknameMap,
+          currentQuiz.length
+        );
 
         await interaction.editReply({
           embeds: [
@@ -398,7 +426,7 @@ module.exports = {
           ],
         });
 
-        // add to overview
+        // Add to overview
         const today = new Date();
         const formattedDate = `${today
           .getDate()
@@ -407,26 +435,26 @@ module.exports = {
           .toString()
           .padStart(2, "0")}/${today.getFullYear()}`;
 
-        const top5 = scores.slice(0, 5);
+        const top5 = currentQuiz.slice(0, 5);
 
         try {
           await quizOverviewSchema.create({
-            hostId: `<@${hostId.id}>`,
+            hostId: `<@${hostUser.id}>`,
             date: formattedDate,
-            first: players[0]?.userId ?? "0000",
-            second: players[1]?.userId ?? "0000",
-            third: players[2]?.userId ?? "0000",
-            fourth: players[3]?.userId ?? "0000",
-            fifth: players[4]?.userId ?? "0000",
+            first: currentQuiz[0]?.userId ?? "0000",
+            second: currentQuiz[1]?.userId ?? "0000",
+            third: currentQuiz[2]?.userId ?? "0000",
+            fourth: currentQuiz[3]?.userId ?? "0000",
+            fifth: currentQuiz[4]?.userId ?? "0000",
           });
         } catch (err) {
           console.error("Failed to create quiz overview:", err);
         }
 
-        // give players points
+        // Give players points
         await awardTopPoints();
 
-        // clear current quiz
+        // Clear current quiz
         try {
           await quizCurrentSchema.deleteMany({});
           console.log("All quizCurrentSchema documents have been cleared!");
@@ -434,20 +462,7 @@ module.exports = {
           console.error("Failed to clear quizCurrentSchema:", err);
         }
 
-        // clear roles
-
-        const hostRole = guild.roles.cache.find(
-          (r) => r.name === QUIZ_HOST_ROLE
-        );
-        const playerRole = guild.roles.cache.find(
-          (r) => r.name === QUIZ_PLAYER_ROLE
-        );
-
-        if (!hostRole) return console.log(`Role "${QUIZ_HOST_ROLE}" not found`);
-
-        if (!playerRole)
-          return console.log(`Role "${QUIZ_PLAYER_ROLE}" not found`);
-
+        // Clear roles
         const members = await guild.members.fetch();
         const membersWithHostRole = members.filter((member) =>
           member.roles.cache.has(hostRole.id)
