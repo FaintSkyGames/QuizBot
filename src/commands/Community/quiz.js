@@ -12,9 +12,11 @@ const quizPlayersSchema = require("../../schemas/quizPlayersSchema");
 const quizCurrentSchema = require("../../schemas/quizCurrentSchema");
 const quizOverviewSchema = require("../../schemas/quizOverviewSchema");
 const player = require("./player");
-
-const QUIZ_HOST_ROLE = "quizhost"; // name of the role
-const QUIZ_PLAYER_ROLE = "quizplayer";
+const {
+  QUIZ_HOST_ROLE,
+  QUIZ_PLAYER_ROLE,
+  BOT_MANAGER_ROLE,
+} = require("../../utils/constants.js");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -172,34 +174,44 @@ module.exports = {
         .setDescription("Show the leaderboard for all the quizes")
     ),
   async execute(interaction) {
-    // Command execution logic goes here
-
     // Get current subcommand
     const subcommand = interaction.options.getSubcommand();
-
     const guild = interaction.guild;
 
-    //const quizPlayersDB = mongoose.models.players  || mongoose.model('players', quizPlayersSchema);
-    //const PlayersDB = mongoose.models.PlayersDB || mongoose.model('PlayersDB', quizPlayersSchema, 'players');
+    // Refresh cache
+    await guild.roles.fetch();
+    await guild.members.fetch();
+
+    // Error handling
+    const hostRole = guild.roles.cache.find((r) => r.name === QUIZ_HOST_ROLE);
+    if (!hostRole)
+      return interaction.editReply(`The role "${QUIZ_HOST_ROLE}" is required.`);
+
+    const playerRole = guild.roles.cache.find(
+      (r) => r.name === QUIZ_PLAYER_ROLE
+    );
+    if (!playerRole)
+      return interaction.editReply(
+        `The role "${QUIZ_PLAYRE_ROLE}" is required.`
+      );
+
+    const botManager = guild.roles.cache.find(
+      (r) => r.name === BOT_MANAGER_ROLE
+    );
 
     if (subcommand == "start") {
       try {
         await interaction.deferReply();
 
-        // Find the role by name
-        const hostRole = guild.roles.cache.find(
-          (r) => r.name === QUIZ_HOST_ROLE
-        );
-
-        if (!hostRole)
-          return interaction.editReply(
-            `The role "${QUIZ_HOST_ROLE}" is required.`
-          );
-
         await guild.members.fetch();
         const host = guild.members.cache.filter((member) =>
           member.roles.cache.has(hostRole.id)
         );
+
+        const hostUser = interaction.options.getUser("host");
+        const hostEntry = await quizPlayersSchema.findOne({
+          userId: hostUser.id,
+        });
 
         // if host present then quiz active
         if (host.size > 0) {
@@ -212,29 +224,39 @@ module.exports = {
             .setColor("Random")
             .setTitle("Start Quiz")
             .setDescription(
-              `Error: No quiz started. There is an existing quiz hosted by ${hostUsernames}`
+              `Error: No quiz started. \n There is an existing quiz hosted by ${hostUsernames}`
+            )
+            .setTimestamp();
+
+          await interaction.editReply({ embeds: [embed] });
+        } else if (!hostEntry) {
+          const embed = new EmbedBuilder()
+            .setColor("Random")
+            .setTitle("Start Quiz")
+            .setDescription(
+              `Error: No quiz started. \n ${hostUser} is not in the database.`
             )
             .setTimestamp();
 
           await interaction.editReply({ embeds: [embed] });
         } else {
-          // Assign host
-          const hostId = interaction.options.getUser("host");
           // Assign role
-          const member = await guild.members.fetch(hostId);
-          member.roles
+          const hostMember = await guild.members.fetch(hostUser);
+          hostMember.roles
             .add(hostRole)
             .then(() =>
               console.log(
-                `${member.user.tag} was given the role "${QUIZ_HOST_ROLE}"!`
+                `@${hostUser.tag} was given the role "${QUIZ_HOST_ROLE}"!`
               )
             )
             .catch((err) => console.error(`Failed to assign role: ${err}`));
 
+          const displayName = hostEntry.name || hostUser.username;
+
           const embed = new EmbedBuilder()
             .setColor("Random")
             .setTitle("Start Quiz")
-            .setDescription(`${member}s quiz is starting soon!`)
+            .setDescription(`${displayName}'s quiz is starting soon!`)
             .setTimestamp();
 
           await interaction.editReply({ embeds: [embed] });
@@ -242,31 +264,157 @@ module.exports = {
       } catch (error) {
         interaction.editReply(error);
       }
+    } else if (subcommand === "join") {
+      await interaction.deferReply();
+
+      await guild.members.fetch();
+      const hostMember = guild.members.cache.find((member) =>
+        member.roles.cache.has(hostRole.id)
+      );
+
+      const discordUser =
+        interaction.options.getUser("user") || interaction.user;
+      const discordMember = await interaction.guild.members.fetch(
+        discordUser.id
+      );
+
+      let playerInQuiz;
+
+      // If quiz running
+      if (hostMember) {
+        const currentQuiz = await quizCurrentSchema.find();
+        const allPlayers = await quizPlayersSchema.find();
+
+        // Check is in player database
+        const playerEntry = await quizPlayersSchema.findOne({
+          userId: discordUser.id,
+        });
+
+        if (!playerEntry) {
+          const embed = new EmbedBuilder()
+            .setColor("Random")
+            .setTitle("Join Quiz")
+            .setDescription(
+              `Hold your horses, youre not part of the database. Use /player add to add yourself.`
+            )
+            .setTimestamp();
+
+          return interaction.editReply({ embeds: [embed] });
+        }
+
+        // Check if player is host
+        if (discordUser.id === hostMember.id) {
+          const embed = new EmbedBuilder()
+            .setColor("Random")
+            .setTitle("Join Quiz")
+            .setDescription(`Quiz hosts can't join the quiz!`)
+            .setTimestamp();
+
+          return interaction.editReply({ embeds: [embed] });
+        }
+
+        // Check if player is in quiz database
+        playerInQuiz = await quizCurrentSchema.findOne({
+          userId: discordUser.id,
+        });
+      } else {
+        return interaction.editReply(`No quiz running.`);
+      }
+
+      if (playerInQuiz) {
+        const embed = new EmbedBuilder()
+          .setColor("Random")
+          .setTitle("Join Quiz")
+          .setDescription(`Sorry, joining twice will not get you extra points.`)
+          .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+      } else {
+        // Create entry
+        await quizCurrentSchema.create({
+          userId: discordUser.id,
+          points: 0,
+        });
+
+        // Give role
+        await discordMember.roles
+          .add(playerRole)
+          .then(() =>
+            console.log(
+              `${discordMember.user.tag} was given the role "${QUIZ_PLAYER_ROLE}"`
+            )
+          )
+          .catch((err) =>
+            console.error(
+              `Failed to add role to ${discordMember.user.tag}: ${err}`
+            )
+          );
+
+        // Find hostname
+        const hostEntry = await quizPlayersSchema.findOne({
+          userId: hostMember.id,
+        });
+        const hostDisplayName = hostEntry.name || hostMember.username;
+
+        const embed = new EmbedBuilder()
+          .setColor("Random")
+          .setTitle("Join Quiz")
+          .setDescription(
+            `Whoop whoop, you're joining ${hostDisplayName}'s quiz!`
+          )
+          .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+      }
     } else if (subcommand === "end") {
-      const member = interaction.member;
-      if (!member.roles.cache.some((role) => role.name === QUIZ_HOST_ROLE)) {
+      // Only allow hosts and bot managers to trigger command
+      const triggerMember = await guild.members.fetch(interaction.user.id);
+      if (
+        !triggerMember.roles.cache.has(botManager.id) &&
+        !triggerMember.roles.cache.has(hostRole.id)
+      ) {
         return interaction.reply({
           content: "❌ You need the **quizhost** role to run this command!",
           ephemeral: true,
         });
       }
 
+      // If no host present then no quiz active
+      const host = guild.members.cache.filter((member) =>
+        member.roles.cache.has(hostRole.id)
+      );
+
+      if (host.size <= 0) {
+        return interaction.reply({
+          content: "❌ No quiz running.",
+          ephemeral: true,
+        });
+      }
+
+      const hostUser = interaction.options.getUser("host");
+      const hostMember = await guild.members.fetch(hostUser.id);
+
+      if (!hostMember.roles.cache.has(hostRole.id)) {
+        return interaction.reply({
+          content: "❌ The quiz host is incorrect.",
+          ephemeral: true,
+        });
+      }
+
       await interaction.deferReply();
-
       try {
-        const hostId = interaction.options.getUser("host");
-
-        const scores = await quizCurrentSchema.find().sort({ points: -1 });
-        const players = await quizPlayersSchema.find();
+        const currentQuiz = await quizCurrentSchema.find().sort({ points: -1 });
+        const allPlayers = await quizPlayersSchema.find();
 
         // Build nickname map
-        const nicknameMap = new Map(players.map((p) => [p.userId, p.name]));
-
-        // post results
-        //await interaction.deferReply();
+        const nicknameMap = new Map(allPlayers.map((p) => [p.userId, p.name]));
 
         // Build leaderboard string
-        const scoreboard = buildScoreboard(scores, nicknameMap, scores.length);
+        const scoreboard = buildScoreboard(
+          currentQuiz,
+          nicknameMap,
+          currentQuiz.length
+        );
 
         await interaction.editReply({
           embeds: [
@@ -278,7 +426,7 @@ module.exports = {
           ],
         });
 
-        // add to overview
+        // Add to overview
         const today = new Date();
         const formattedDate = `${today
           .getDate()
@@ -287,26 +435,26 @@ module.exports = {
           .toString()
           .padStart(2, "0")}/${today.getFullYear()}`;
 
-        const top5 = scores.slice(0, 5);
+        const top5 = currentQuiz.slice(0, 5);
 
         try {
           await quizOverviewSchema.create({
-            hostId: `<@${hostId.id}>`,
+            hostId: `<@${hostUser.id}>`,
             date: formattedDate,
-            first: players[0]?.userId ?? "0000",
-            second: players[1]?.userId ?? "0000",
-            third: players[2]?.userId ?? "0000",
-            fourth: players[3]?.userId ?? "0000",
-            fifth: players[4]?.userId ?? "0000",
+            first: currentQuiz[0]?.userId ?? "0000",
+            second: currentQuiz[1]?.userId ?? "0000",
+            third: currentQuiz[2]?.userId ?? "0000",
+            fourth: currentQuiz[3]?.userId ?? "0000",
+            fifth: currentQuiz[4]?.userId ?? "0000",
           });
         } catch (err) {
           console.error("Failed to create quiz overview:", err);
         }
 
-        // give players points
+        // Give players points
         await awardTopPoints();
 
-        // clear current quiz
+        // Clear current quiz
         try {
           await quizCurrentSchema.deleteMany({});
           console.log("All quizCurrentSchema documents have been cleared!");
@@ -314,20 +462,7 @@ module.exports = {
           console.error("Failed to clear quizCurrentSchema:", err);
         }
 
-        // clear roles
-
-        const hostRole = guild.roles.cache.find(
-          (r) => r.name === QUIZ_HOST_ROLE
-        );
-        const playerRole = guild.roles.cache.find(
-          (r) => r.name === QUIZ_PLAYER_ROLE
-        );
-
-        if (!hostRole) return console.log(`Role "${QUIZ_HOST_ROLE}" not found`);
-
-        if (!playerRole)
-          return console.log(`Role "${QUIZ_PLAYER_ROLE}" not found`);
-
+        // Clear roles
         const members = await guild.members.fetch();
         const membersWithHostRole = members.filter((member) =>
           member.roles.cache.has(hostRole.id)
@@ -368,125 +503,60 @@ module.exports = {
       } catch (error) {
         interaction.editReply(error);
       }
-    } else if (subcommand === "join") {
-      await interaction.deferReply();
-
-      // Find the role by name
-      const hostRole = guild.roles.cache.find((r) => r.name === QUIZ_HOST_ROLE);
-
-      if (!hostRole)
-        return interaction.editReply(
-          `The role "${QUIZ_HOST_ROLE}" is required.`
-        );
-
-      // Find the role by name
-      const playerRole = guild.roles.cache.find(
-        (r) => r.name === QUIZ_PLAYER_ROLE
-      );
-      if (!playerRole)
-        return interaction.editReply(
-          `The role "${QUIZ_PLAYER_ROLE}" is required.`
-        );
-
-      await guild.members.fetch();
-      const host = guild.members.cache.filter((member) =>
-        member.roles.cache.has(hostRole.id)
-      );
-
-      const user = interaction.options.getUser("user") || interaction.user;
-      const member = await interaction.guild.members.fetch(user.id);
-
-      let playerInQuiz = false;
-
-      if (host.size > 0) {
-        const currentQuiz = await quizCurrentSchema.find();
-        const allPlayers = await quizPlayersSchema.find();
-        const check = `<@${user.id}`;
-
-        let playerInDatabase = false;
-
-        for (const player of allPlayers) {
-          if (player.userId === check) {
-            playerInDatabase = true;
-          }
-        }
-
-        if (!playerInDatabase) {
-          const embed = new EmbedBuilder()
-            .setColor("Random")
-            .setTitle("Join Quiz")
-            .setDescription(
-              `Hold your horses, youre not part of the database. Use /player add to add yourself.`
-            )
-            .setTimestamp();
-
-          await interaction.editReply({ embeds: [embed] });
-        }
-
-        for (const player of currentQuiz) {
-          if (player.userId === check) {
-            playerInQuiz = true;
-          }
-        }
-      } else {
-        return interaction.editReply(`No quiz running.`);
-      }
-
-      if (playerInQuiz) {
-        const embed = new EmbedBuilder()
-          .setColor("Random")
-          .setTitle("Join Quiz")
-          .setDescription(`Sorry, joining twice will not get you extra points.`)
-          .setTimestamp();
-
-        await interaction.editReply({ embeds: [embed] });
-      } else {
-        await quizCurrentSchema.create({
-          userId: user.id,
-          points: 0,
-        });
-
-        await member.roles
-          .add(playerRole)
-          .then(() =>
-            console.log(
-              `${member.user.tag} was given the role "${QUIZ_PLAYER_ROLE}"`
-            )
-          )
-          .catch((err) =>
-            console.error(`Failed to add role to ${member.user.tag}: ${err}`)
-          );
-
-        const embed = new EmbedBuilder()
-          .setColor("Random")
-          .setTitle("Join Quiz")
-          .setDescription(`Whoop whoop, youre joining the quiz!`)
-          .setTimestamp();
-
-        await interaction.editReply({ embeds: [embed] });
-      }
     } else if (subcommand === "give") {
-      const member = interaction.member;
-      if (!member.roles.cache.some((role) => role.name === QUIZ_HOST_ROLE)) {
+      // Only allow hosts and bot managers to trigger command
+      const triggerMember = await guild.members.fetch(interaction.user.id);
+      if (
+        !triggerMember.roles.cache.has(botManager.id) &&
+        !triggerMember.roles.cache.has(hostRole.id)
+      ) {
         return interaction.reply({
           content: "❌ You need the **quizhost** role to run this command!",
           ephemeral: true,
         });
       }
 
-      const playerId = interaction.options.getUser("player");
-      const toGive = interaction.options.getNumber("points");
+      // If no host present then no quiz active
+      const host = guild.members.cache.filter((member) =>
+        member.roles.cache.has(hostRole.id)
+      );
+
+      if (host.size <= 0) {
+        return interaction.reply({
+          content: "❌ No quiz running.",
+          ephemeral: true,
+        });
+      }
+
+      const playerUser = interaction.options.getUser("player");
+      const pointsToGive = interaction.options.getNumber("points");
+
+      // Check if player is in quiz database
+      const playerInQuiz = await quizCurrentSchema.findOne({
+        userId: playerUser.id,
+      });
+
+      if (!playerInQuiz) {
+        return interaction.reply({
+          content: "❌ Player has not joined the quiz.",
+          ephemeral: true,
+        });
+      }
 
       try {
-        const playerDoc = await quizCurrentSchema.findOne({ userId: playerId });
+        const playerDoc = await quizCurrentSchema.findOne({
+          userId: playerUser.id,
+        });
 
-        playerDoc.points += toGive;
+        playerDoc.points += pointsToGive;
         await playerDoc.save();
 
         const embed = new EmbedBuilder()
           .setColor("Random")
           .setTitle("Give Points")
-          .setDescription("Successfully updated ")
+          .setDescription(
+            `Successfully updated. \n ${pointsToGive} points given.`
+          )
           .setTimestamp();
 
         await interaction.reply({ embeds: [embed] });
@@ -495,27 +565,59 @@ module.exports = {
         interaction.reply("error");
       }
     } else if (subcommand === "take") {
-      const member = interaction.member;
-      if (!member.roles.cache.some((role) => role.name === QUIZ_HOST_ROLE)) {
+      // Only allow hosts and bot managers to trigger command
+      const triggerMember = await guild.members.fetch(interaction.user.id);
+      if (
+        !triggerMember.roles.cache.has(botManager.id) &&
+        !triggerMember.roles.cache.has(hostRole.id)
+      ) {
         return interaction.reply({
           content: "❌ You need the **quizhost** role to run this command!",
           ephemeral: true,
         });
       }
 
-      const playerId = interaction.options.getUser("player");
-      const toTake = interaction.options.getNumber("points");
+      // If no host present then no quiz active
+      const host = guild.members.cache.filter((member) =>
+        member.roles.cache.has(hostRole.id)
+      );
+
+      if (host.size <= 0) {
+        return interaction.reply({
+          content: "❌ No quiz running.",
+          ephemeral: true,
+        });
+      }
+
+      const playerUser = interaction.options.getUser("player");
+      const pointsToRemove = interaction.options.getNumber("points");
+
+      // Check if player is in quiz database
+      const playerInQuiz = await quizCurrentSchema.findOne({
+        userId: playerUser.id,
+      });
+
+      if (!playerInQuiz) {
+        return interaction.reply({
+          content: "❌ Player has not joined the quiz.",
+          ephemeral: true,
+        });
+      }
 
       try {
-        const playerDoc = await quizCurrentSchema.findOne({ userId: playerId });
+        const playerDoc = await quizCurrentSchema.findOne({
+          userId: playerUser.id,
+        });
 
-        playerDoc.points -= toTake;
+        playerDoc.points -= pointsToRemove;
         await playerDoc.save();
 
         const embed = new EmbedBuilder()
           .setColor("Random")
           .setTitle("Take Points")
-          .setDescription("Successfully updated ")
+          .setDescription(
+            `Successfully updated. \n ${pointsToRemove} points removed.`
+          )
           .setTimestamp();
 
         await interaction.reply({ embeds: [embed] });
